@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3 -i
 
 import os
 import requests
@@ -202,7 +202,7 @@ class manageGHE:
                     return None
 
             # Do all the direct collaborators (students) first, and then the staff team.
-            for (k,v) in repos.items():
+            for v in repos.values():
                 owner_name = v['full_name']
                 # Grab the list of direct collaborators
                 # https://docs.github.com/en/enterprise-server@2.21/rest/reference/repos#list-repository-collaborators
@@ -220,26 +220,23 @@ class manageGHE:
                     print(f"GHE API status code {r.status_code}")
                     return None
 
-            self.github_headers['Accept'] = 'application/vnd.github.v3.repository+json'
-            with self._getSession() as s2:
-                for (k,v) in repos.items():
-                    owner_name = v['full_name']
-                    # Look up the staff team permissions on the repo. (use s2)
-                    # https://docs.github.com/en/enterprise-server@2.21/rest/reference/teams#check-team-permissions-for-a-repository
-                    u_teams = f"{staff_team_repos}/{owner_name}"
-                    r = s2.get(u_teams)
-                    if r.status_code == 200:
-                        existingStaffPermsD = r.json()['permissions']
-                        if existingStaffPermsD != staffPermsD:
-                            print(f"Staff permission on {owner_name} was {existingStaffPermsD}. Setting to {staffPerms}.")
-                            fix = s.put(u_teams, json=staffPermsPayload)
-                            if fix.status_code != 204:
-                                print(f"GHE API set staff perms status code {fix.status_code}")
-                                return None
-                    else:
-                        print(f"GHE API status code {r.status_code}")
-                        return None
-            self.github_headers['Accept'] = 'application/vnd.github.v3+json'
+            for v in repos.values():
+                owner_name = v['full_name']
+                # Look up the staff team permissions on the repo.
+                # https://docs.github.com/en/enterprise-server@2.21/rest/reference/teams#check-team-permissions-for-a-repository
+                u_teams = f"{staff_team_repos}/{owner_name}"
+                r = s.get(u_teams, headers={'Accept': 'application/vnd.github.v3.repository+json'})
+                if r.status_code == 200:
+                    existingStaffPermsD = r.json()['permissions']
+                    if existingStaffPermsD != staffPermsD:
+                        print(f"Staff permission on {owner_name} was {existingStaffPermsD}. Setting to {staffPerms}.")
+                        fix = s.put(u_teams, json=staffPermsPayload)
+                        if fix.status_code != 204:
+                            print(f"GHE API set staff perms status code {fix.status_code}")
+                            return None
+                else:
+                    print(f"GHE API status code {r.status_code}")
+                    return None
 
     def __repr__(self):
         retVal = ""
@@ -247,3 +244,8 @@ class manageGHE:
         retVal += f"    Org: {self.org}\n"
         retVal += f"Headers: {self.github_headers}\n"
         return retVal
+
+if __name__ == "__main__":
+    m=manageGHE()
+    print("m=manageGHE()")
+    print(m)
