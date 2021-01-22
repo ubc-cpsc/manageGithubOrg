@@ -10,7 +10,7 @@ class manageGHE:
     logger = None
     apiURL = 'https://github.students.cs.ubc.ca/api/v3'
     org = None
-    token = None
+    _token = None
     github_headers = { 'Accept': 'application/vnd.github.v3+json' }
 
     def __init__(self, logger=None, verbose=False):
@@ -33,36 +33,27 @@ class manageGHE:
 
         self.apiURL = os.getenv('GHE_APIURL', self.apiURL)
         self.org = os.getenv('GHE_ORG', self.org)
-        self.setToken(os.getenv('GHE_TOKEN', self.token))
-        if not self.org:
-            self.logger.warning("GHE Org not set. (Use GHE_ORG environment variable.)")
-        if not self.token:
-            self.logger.warning("GHE Token not set. (Use GHE_TOKEN environment variable.)")
+        self._token = os.getenv('GHE_TOKEN', self._token)
+        if self._token:
+            self.github_headers['Authorization'] = 'token ' + self._token
 
     def _getSession(self):
-        if not self.token:
-            self.logger.error("Must set token first")
+        if not self._token:
+            self.logger.error("Authorization token must be set first. ' export GHE_TOKEN=yourtokengoeshere' is recommended.")
             return None
         if not self.org:
-            self.logger.error("Must set org first")
+            self.logger.error("Github org must be set first. 'export GHE_ORG=CPSCNNN_YYYYS-TN' is recommended.")
             return None
         mySession = requests.Session()
         mySession.headers.update(self.github_headers)
         return mySession
 
-    def setToken(self, token):
-        self.token = token
-        if token:
-            self.github_headers['Authorization'] = 'token ' + self.token
-        else:
-            del self.github_headers['Authorization']
-
     def getTeamMembership(self, team):
-        """ Grab current github user list, return a dictionary of users {uid: {'uid': uid, 'puid': None, 'stud_no': None, 'emp_no': None}} """
+        """ Grab the current list of users of a team in your org. """
 
         with self._getSession() as s:
 
-            myURL = f"{self.apiURL}/orgs/{self.org}/teams/{team}/members?since"
+            myURL = f"{self.apiURL}/orgs/{self.org}/teams/{team}/members"
             users = {}
             while True:
                 r = s.get(myURL)
@@ -81,14 +72,14 @@ class manageGHE:
                     else:
                         return list(users.keys())
                 else:
-                    self.logger.error("grabUsersFromGHE status code %s", r.status_code)
+                    self.logger.error("%s status_code: %s", myURL, r.status_code)
                     return None
 
 
 
     def createAssnRepos(self, assn, users, template=None, userPerms='pull'):
         """ Create assignment {assn} for list {users}, optionally using repo {template}.
-        Default permissions set to read for staff and write for user. """
+        Default permissions set to read for staff and user. """
 
         # https://docs.github.com/en/enterprise-server@2.21/rest/reference/repos#add-a-repository-collaborator
         if userPerms not in {'pull', 'push', 'admin'}:
@@ -139,7 +130,7 @@ class manageGHE:
                     else:
                         break
                 else:
-                    self.logger.error("GHE API status code %s", r.status_code)
+                    self.logger.error("%s status_code %s", myURL, r.status_code)
                     return None
 
             # These are the missing repos to create
@@ -147,26 +138,27 @@ class manageGHE:
 
             for repo in reposToCreate:
                 # Create a repo.
+                self.logger.info("creating repo: %s", repo)
                 # https://docs.github.com/en/enterprise-server@2.21/rest/reference/repos#create-an-organization-repository
                 myURL = f"{self.apiURL}/orgs/{self.org}/repos"
-                myTemplateURL = f"{self.apiURL}/repos/{template}/generate"
                 payload = {
                     'name': repo,
                     'team_id': staff_team_id,
                     'private': True,
                     'owner': self.org,
                 }
-                self.logger.info("creating repo: %s", repo)
                 if template:
                     # The template API doesn't support setting the team.
                     del payload['team_id']
-                    r = s.post(myTemplateURL, json=payload, headers={'Accept': 'application/vnd.github.baptiste-preview+json'})
+                    myURL = f"{self.apiURL}/repos/{template}/generate"
+                    r = s.post(myURL, json=payload, headers={'Accept': 'application/vnd.github.baptiste-preview+json'})
                 else:
                     r = s.post(myURL, json=payload)
                 if r.status_code == 201:
                     self.logger.debug("created repo %s", repo)
                 else:
-                    raise AssertionError(f"createRepo should not fail. {r.status_code}")
+                    self.logger.critical("%s status_code %s", myURL, r.status_code)
+                    return None
 
                 # Set permissions on (add collaborators to) the newly created repo.
                 repoURL = r.json()['url']
@@ -180,7 +172,8 @@ class manageGHE:
                     # Seems you get this message if permissions are simply set and no invitation sent.
                     self.logger.info("Permissions: %s@%s set to %s.", allRepos[repo], repo, userPerms)
                 else:
-                    raise AssertionError("change repo permissions should not fail")
+                    self.logger.critical("%s status_code %s", myURL, r.status_code)
+                    return None
 
 
 
@@ -192,15 +185,16 @@ class manageGHE:
         if userPerms not in {'pull', 'push', 'admin'}:
             self.logger.error("Invalid userPerms")
             return
+        userPermsPayload = { 'permission': userPerms }
         userPermsD = {
             "admin": True if userPerms == 'admin' else False,
             "push": True if userPerms in ['admin', 'push'] else False,
             "pull": True,
         }
-        userPermsPayload = {'permission': userPerms }
         if staffPerms not in {'pull', 'push', 'admin'}:
             self.logger.error("Invalid staffPerms")
             return
+        staffPermsPayload = { 'permission': staffPerms }
         staffPermsD = {
             "admin": True if staffPerms == 'admin' else False,
             "maintain": False,
@@ -208,7 +202,6 @@ class manageGHE:
             "triage": False,
             "pull": True,
         }
-        staffPermsPayload = {'permission': staffPerms }
 
         with self._getSession() as s:
             # Grab the 'staff' team id for setting permissions later.
@@ -258,7 +251,7 @@ class manageGHE:
                                 self.logger.error("GHE API set user perms status code %s", fix.status_code)
                                 return None
                 else:
-                    self.logger.error("GHE API status code %s", r.status_code)
+                    self.logger.error("%s?affiliation=direct status_code %s", u_collab, r.status_code)
                     return None
 
             for v in repos.values():
@@ -282,13 +275,14 @@ class manageGHE:
                         return None
 
     def __repr__(self):
-        retVal = ""
-        retVal += f"API URL: {self.apiURL}\n"
-        retVal += f"    Org: {self.org}\n"
-        retVal += f"Headers: {self.github_headers}\n"
+        retVal = f"""\
+        API URL: {self.apiURL}
+  Authorization: {self.github_headers['Authorization']}
+            Org: {self.org}"""
         return retVal
 
 if __name__ == "__main__":
-    m=manageGHE()
-    print("m=manageGHE()")
+    #os.environ['GHE_ORG']='CPSCNNN-YYYYS-TN'
+    m = manageGHE()
+    print(">>> m = manageGHE()")
     print(m)
