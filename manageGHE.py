@@ -72,7 +72,7 @@ class manageGHE:
         Default permissions set to read for staff and write for user. """
 
         # https://docs.github.com/en/enterprise-server@2.21/rest/reference/repos#add-a-repository-collaborator
-        if userPerms not in {'pull', 'push', 'admin', 'maintain', 'triage'}:
+        if userPerms not in {'pull', 'push', 'admin'}:
             print("Invalid userPerms")
             return
 
@@ -228,15 +228,17 @@ class manageGHE:
                 r = s.get(u_teams, headers={'Accept': 'application/vnd.github.v3.repository+json'})
                 if r.status_code == 200:
                     existingStaffPermsD = r.json()['permissions']
-                    if existingStaffPermsD != staffPermsD:
-                        print(f"Staff permission on {owner_name} was {existingStaffPermsD}. Setting to {staffPerms}.")
-                        fix = s.put(u_teams, json=staffPermsPayload)
-                        if fix.status_code != 204:
-                            print(f"GHE API set staff perms status code {fix.status_code}")
-                            return None
+                elif r.status_code == 404:
+                    existingStaffPermsD = None
                 else:
-                    print(f"GHE API status code {r.status_code}")
+                    print(f"Error: {u_teams} returned {r.status_code}")
                     return None
+                if existingStaffPermsD != staffPermsD:
+                    print(f"Staff permission on {owner_name} was {existingStaffPermsD}. Setting to {staffPerms}.")
+                    fix = s.put(u_teams, json=staffPermsPayload)
+                    if fix.status_code != 204:
+                        print(f"GHE API set staff perms status code {fix.status_code}")
+                        return None
 
     def __repr__(self):
         retVal = ""
