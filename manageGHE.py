@@ -17,16 +17,20 @@ class manageGHE:
         if logger:
             self.logger = logger
         else:
-            formatter = logging.Formatter('[%(asctime)s] %(process)d %(levelname)s %(message)s', datefmt='%d/%b/%Y %H:%M:%S')
             self.logger = logging.getLogger('manageGHE')
             self.logger.setLevel(logging.DEBUG)
+
+            # dump to standard out
             from sys import stdout
             ch = logging.StreamHandler(stdout)
             ch.setLevel(logging.INFO)
             if verbose:
                 ch.setLevel(logging.DEBUG)
+            # Prefix with context 
+            formatter = logging.Formatter('[%(asctime)s] %(process)d %(levelname)s %(message)s', datefmt='%d/%b/%Y %H:%M:%S')
             ch.setFormatter(formatter)
             self.logger.addHandler(ch)
+
         self.apiURL = os.getenv('GHE_APIURL', self.apiURL)
         self.org = os.getenv('GHE_ORG', self.org)
         self.setToken(os.getenv('GHE_TOKEN', self.token))
