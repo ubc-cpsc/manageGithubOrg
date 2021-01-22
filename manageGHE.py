@@ -67,13 +67,17 @@ class manageGHE:
 
 
 
-    def createAssnRepos(self, users, assn, template=None, userPerms='push'):
+    def createAssnRepos(self, assn, users, template=None, userPerms='pull'):
         """ Create assignment {assn} for list {users}, optionally using repo {template}.
         Default permissions set to read for staff and write for user. """
 
         # https://docs.github.com/en/enterprise-server@2.21/rest/reference/repos#add-a-repository-collaborator
         if userPerms not in {'pull', 'push', 'admin'}:
             print("Invalid userPerms")
+            return
+
+        if not isinstance(users, list):
+            print("users needs to be a list")
             return
 
         allRepos = { f"{assn}_{user}" : user for user in users }
@@ -86,6 +90,15 @@ class manageGHE:
                 print("Required 'staff' team was not found in the {self.org} organization. Please create manually.")
                 return
             staff_team_id = r.json()['id']
+
+            if template:
+                r = s.get(f"{self.apiURL}/repos/{template}", headers={'Accept': 'application/vnd.github.baptiste-preview+json'})
+                if r.status_code != 200:
+                    print(f"template {template} is not a repo. Status code = {r.status_code}. Should be of the form 'owner/repo'")
+                    return
+                if not r.json()['is_template']:
+                    print(f"{template} is not a 'template' repo. ")
+                    return
 
             # Lookup all current repos
             myURL = f"{self.apiURL}/orgs/{self.org}/repos"
@@ -115,16 +128,27 @@ class manageGHE:
 
             for repo in reposToCreate:
                 # Create a repo.
+                # https://docs.github.com/en/enterprise-server@2.21/rest/reference/repos#create-an-organization-repository
                 myURL = f"{self.apiURL}/orgs/{self.org}/repos"
-                payload = { 'name' : repo }
-                payload['team_id'] = staff_team_id
+                myTemplateURL = f"{self.apiURL}/repos/{template}/generate"
+                payload = {
+                    'name': repo,
+                    'team_id': staff_team_id,
+                    'private': True,
+                    'owner': self.org,
+                }
                 print(f"creating repo: {repo}")
-                r = s.post(myURL, json=payload)
+                if template:
+                    # The template API doesn't support setting the team.
+                    del payload['team_id']
+                    r = s.post(myTemplateURL, json=payload, headers={'Accept': 'application/vnd.github.baptiste-preview+json'})
+                else:
+                    r = s.post(myURL, json=payload)
                 if r.status_code == 201:
                     pass
-                    print(f"created repo {repo}")
+                    #print(f"created repo {repo}")
                 else:
-                    raise AssertionError("createRepo should not fail")
+                    raise AssertionError(f"createRepo should not fail. {r.status_code}")
 
                 # Set permissions on (add collaborators to) the newly created repo.
                 repoURL = r.json()['url']
@@ -137,7 +161,7 @@ class manageGHE:
                     # The docs say 204 is "when person is already a collaborator", but that doesn't seems to be entirely true.
                     # Seems you get this message if permissions are simply set and no invitation sent.
                     pass
-                    print(f"perms set on repo {repo}")
+                    #print(f"perms set on repo {repo}")
                 else:
                     raise AssertionError("change repo permissions should not fail")
 
