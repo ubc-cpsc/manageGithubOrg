@@ -148,12 +148,98 @@ class manageGHE:
         """ Query perms for all assignment {assn} and update perms. """
 
         # https://docs.github.com/en/enterprise-server@2.21/rest/reference/repos#add-a-repository-collaborator
-        if userPerms not in {'pull', 'push', 'admin', 'maintain', 'triage'}:
+        if userPerms not in {'pull', 'push', 'admin'}:
             print("Invalid userPerms")
             return
-        if staffPerms not in {'pull', 'push', 'admin', 'maintain', 'triage'}:
+        userPermsD = {
+            "admin": True if userPerms == 'admin' else False,
+            "push": True if userPerms in ['admin', 'push'] else False,
+            "pull": True,
+        }
+        userPermsPayload = {'permission': userPerms }
+        if staffPerms not in {'pull', 'push', 'admin'}:
             print("Invalid staffPerms")
             return
+        staffPermsD = {
+            "admin": True if staffPerms == 'admin' else False,
+            "maintain": False,
+            "push": True if staffPerms in ['admin', 'push'] else False,
+            "triage": False,
+            "pull": True,
+        }
+        staffPermsPayload = {'permission': staffPerms }
+
+        with self._getSession() as s:
+            # Grab the 'staff' team id for setting permissions later.
+            myURL = f"{self.apiURL}/orgs/{self.org}/teams/staff"
+            r = s.get(myURL)
+            if r.status_code != 200:
+                print("Required 'staff' team was not found in the {self.org} organization. Please create manually.")
+                return
+            staff_team_repos = r.json()['repositories_url']
+
+            # Lookup all current repos
+            myURL = f"{self.apiURL}/orgs/{self.org}/repos"
+            repos = {}
+            while True:
+                r = s.get(myURL)
+                if r.status_code == 200:
+                    for item in r.json():
+                        if item['name'].startswith(f"{assn}_"):
+                            repos[item['name']] = item
+
+                    # https://docs.github.com/en/enterprise-server@2.21/rest/guides/traversing-with-pagination
+                    if 'Link' in r.headers:
+                        links = { x.split(';')[1].strip() : x.split(';')[0].strip(' <>') for x in r.headers['Link'].split(',') }
+                    else:
+                        links = {}
+                    if 'rel="next"' in links:
+                        myURL = links['rel="next"']
+                    else:
+                        break
+                else:
+                    print(f"GHE API status code {r.status_code}")
+                    return None
+
+            # Do all the direct collaborators (students) first, and then the staff team.
+            for (k,v) in repos.items():
+                owner_name = v['full_name']
+                # Grab the list of direct collaborators
+                # https://docs.github.com/en/enterprise-server@2.21/rest/reference/repos#list-repository-collaborators
+                u_collab = f"{self.apiURL}/repos/{owner_name}/collaborators"
+                r = s.get(f"{u_collab}?affiliation=direct")
+                if r.status_code == 200:
+                    for item in r.json():
+                        if item['permissions'] != userPermsD:
+                            print(f"Permission on {owner_name} for {item['login']} was {item['permissions']}. Setting to {userPerms}.")
+                            fix = s.put(f"{u_collab}/{item['login']}", json=userPermsPayload)
+                            if fix.status_code != 204:
+                                print(f"GHE API set user perms status code {fix.status_code}")
+                                return None
+                else:
+                    print(f"GHE API status code {r.status_code}")
+                    return None
+
+            self.github_headers['Accept'] = 'application/vnd.github.v3.repository+json'
+            with self._getSession() as s2:
+                for (k,v) in repos.items():
+                    owner_name = v['full_name']
+                    # Look up the staff team permissions on the repo. (use s2)
+                    # https://docs.github.com/en/enterprise-server@2.21/rest/reference/teams#check-team-permissions-for-a-repository
+                    u_teams = f"{staff_team_repos}/{owner_name}"
+                    r = s2.get(u_teams)
+                    if r.status_code == 200:
+                        existingStaffPermsD = r.json()['permissions']
+                        if existingStaffPermsD != staffPermsD:
+                            print(f"Staff permission on {owner_name} was {existingStaffPermsD}. Setting to {staffPerms}.")
+                            fix = s.put(u_teams, json=staffPermsPayload)
+                            if fix.status_code != 204:
+                                print(f"GHE API set staff perms status code {fix.status_code}")
+                                return None
+                    else:
+                        print(f"GHE API status code {r.status_code}")
+                        return None
+            self.github_headers['Accept'] = 'application/vnd.github.v3+json'
 
     def __repr__(self):
         retVal = ""
