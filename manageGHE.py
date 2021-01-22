@@ -1,31 +1,46 @@
 #!/usr/bin/env -S python3 -i
 
 import os
+import logging
 import requests
 
 
 class manageGHE:
 
+    logger = None
     apiURL = 'https://github.students.cs.ubc.ca/api/v3'
     org = None
     token = None
     github_headers = { 'Accept': 'application/vnd.github.v3+json' }
 
-    def __init__(self):
+    def __init__(self, logger=None, verbose=False):
+        if logger:
+            self.logger = logger
+        else:
+            formatter = logging.Formatter('[%(asctime)s] %(process)d %(levelname)s %(message)s', datefmt='%d/%b/%Y %H:%M:%S')
+            self.logger = logging.getLogger('manageGHE')
+            self.logger.setLevel(logging.DEBUG)
+            from sys import stdout
+            ch = logging.StreamHandler(stdout)
+            ch.setLevel(logging.INFO)
+            if verbose:
+                ch.setLevel(logging.DEBUG)
+            ch.setFormatter(formatter)
+            self.logger.addHandler(ch)
         self.apiURL = os.getenv('GHE_APIURL', self.apiURL)
         self.org = os.getenv('GHE_ORG', self.org)
         self.setToken(os.getenv('GHE_TOKEN', self.token))
         if not self.org:
-            print("Warning: GHE Org not set. (Use GHE_ORG environment variable.)")
+            self.logger.warning("GHE Org not set. (Use GHE_ORG environment variable.)")
         if not self.token:
-            print("Warning: GHE Token not set. (Use GHE_TOKEN environment variable.)")
+            self.logger.warning("GHE Token not set. (Use GHE_TOKEN environment variable.)")
 
     def _getSession(self):
         if not self.token:
-            print("Must set token first")
+            self.logger.error("Must set token first")
             return None
         if not self.org:
-            print("Must set org first")
+            self.logger.error("Must set org first")
             return None
         mySession = requests.Session()
         mySession.headers.update(self.github_headers)
@@ -62,7 +77,7 @@ class manageGHE:
                     else:
                         return list(users.keys())
                 else:
-                    print(f"grabUsersFromGHE status code {r.status_code}")
+                    self.logger.error("grabUsersFromGHE status code %s", r.status_code)
                     return None
 
 
@@ -73,11 +88,11 @@ class manageGHE:
 
         # https://docs.github.com/en/enterprise-server@2.21/rest/reference/repos#add-a-repository-collaborator
         if userPerms not in {'pull', 'push', 'admin'}:
-            print("Invalid userPerms")
+            self.logger.error("Invalid userPerms")
             return
 
         if not isinstance(users, list):
-            print("users needs to be a list")
+            self.logger.error("users needs to be a list")
             return
 
         allRepos = { f"{assn}_{user}" : user for user in users }
@@ -87,17 +102,17 @@ class manageGHE:
             myURL = f"{self.apiURL}/orgs/{self.org}/teams/staff"
             r = s.get(myURL)
             if r.status_code != 200:
-                print("Required 'staff' team was not found in the {self.org} organization. Please create manually.")
+                self.logger.error("Required 'staff' team was not found in the %s organization. Please create manually.", self.org)
                 return
             staff_team_id = r.json()['id']
 
             if template:
                 r = s.get(f"{self.apiURL}/repos/{template}", headers={'Accept': 'application/vnd.github.baptiste-preview+json'})
                 if r.status_code != 200:
-                    print(f"template {template} is not a repo. Status code = {r.status_code}. Should be of the form 'owner/repo'")
+                    self.logger.error("template %s is not a repo. Status code = %s. Should be of the form 'owner/repo'", template, r.status_code)
                     return
                 if not r.json()['is_template']:
-                    print(f"{template} is not a 'template' repo. ")
+                    self.logger.error("%s is not a 'template' repo.", template)
                     return
 
             # Lookup all current repos
@@ -120,7 +135,7 @@ class manageGHE:
                     else:
                         break
                 else:
-                    print(f"GHE API status code {r.status_code}")
+                    self.logger.error("GHE API status code %s", r.status_code)
                     return None
 
             # These are the missing repos to create
@@ -137,7 +152,7 @@ class manageGHE:
                     'private': True,
                     'owner': self.org,
                 }
-                print(f"creating repo: {repo}")
+                self.logger.info("creating repo: %s", repo)
                 if template:
                     # The template API doesn't support setting the team.
                     del payload['team_id']
@@ -145,8 +160,7 @@ class manageGHE:
                 else:
                     r = s.post(myURL, json=payload)
                 if r.status_code == 201:
-                    pass
-                    #print(f"created repo {repo}")
+                    self.logger.debug("created repo %s", repo)
                 else:
                     raise AssertionError(f"createRepo should not fail. {r.status_code}")
 
@@ -156,12 +170,11 @@ class manageGHE:
                 myURL = f"{repoURL}/collaborators/{allRepos[repo]}"
                 r = s.put(myURL, json=payload)
                 if r.status_code == 201:
-                    print(f"perms set on repo {repo} (invitation sent)")
+                    self.logger.info("Permissions: %s@%s set to %s. (Invitation sent)", allRepos[repo], repo, userPerms)
                 elif r.status_code == 204:
                     # The docs say 204 is "when person is already a collaborator", but that doesn't seems to be entirely true.
                     # Seems you get this message if permissions are simply set and no invitation sent.
-                    pass
-                    #print(f"perms set on repo {repo}")
+                    self.logger.info("Permissions: %s@%s set to %s.", allRepos[repo], repo, userPerms)
                 else:
                     raise AssertionError("change repo permissions should not fail")
 
@@ -173,7 +186,7 @@ class manageGHE:
 
         # https://docs.github.com/en/enterprise-server@2.21/rest/reference/repos#add-a-repository-collaborator
         if userPerms not in {'pull', 'push', 'admin'}:
-            print("Invalid userPerms")
+            self.logger.error("Invalid userPerms")
             return
         userPermsD = {
             "admin": True if userPerms == 'admin' else False,
@@ -182,7 +195,7 @@ class manageGHE:
         }
         userPermsPayload = {'permission': userPerms }
         if staffPerms not in {'pull', 'push', 'admin'}:
-            print("Invalid staffPerms")
+            self.logger.error("Invalid staffPerms")
             return
         staffPermsD = {
             "admin": True if staffPerms == 'admin' else False,
@@ -198,7 +211,7 @@ class manageGHE:
             myURL = f"{self.apiURL}/orgs/{self.org}/teams/staff"
             r = s.get(myURL)
             if r.status_code != 200:
-                print("Required 'staff' team was not found in the {self.org} organization. Please create manually.")
+                self.logger.error("Required 'staff' team was not found in the %s organization. Please create manually.", self.org)
                 return
             staff_team_repos = r.json()['repositories_url']
 
@@ -222,7 +235,7 @@ class manageGHE:
                     else:
                         break
                 else:
-                    print(f"GHE API status code {r.status_code}")
+                    self.logger.error("GHE API status code %s", r.status_code)
                     return None
 
             # Do all the direct collaborators (students) first, and then the staff team.
@@ -235,13 +248,13 @@ class manageGHE:
                 if r.status_code == 200:
                     for item in r.json():
                         if item['permissions'] != userPermsD:
-                            print(f"Permission on {owner_name} for {item['login']} was {item['permissions']}. Setting to {userPerms}.")
+                            self.logger.info("Permissions: %s@%s set to %s. Was %s", item['login'], owner_name, userPerms, item['permissions'])
                             fix = s.put(f"{u_collab}/{item['login']}", json=userPermsPayload)
                             if fix.status_code != 204:
-                                print(f"GHE API set user perms status code {fix.status_code}")
+                                self.logger.error("GHE API set user perms status code %s", fix.status_code)
                                 return None
                 else:
-                    print(f"GHE API status code {r.status_code}")
+                    self.logger.error("GHE API status code %s", r.status_code)
                     return None
 
             for v in repos.values():
@@ -255,13 +268,13 @@ class manageGHE:
                 elif r.status_code == 404:
                     existingStaffPermsD = None
                 else:
-                    print(f"Error: {u_teams} returned {r.status_code}")
+                    self.logger.error(f"%s returned %s", u_teams, r.status_code)
                     return None
                 if existingStaffPermsD != staffPermsD:
-                    print(f"Staff permission on {owner_name} was {existingStaffPermsD}. Setting to {staffPerms}.")
+                    self.logger.info("Permissions: staff(team)@%s set to %s. Was %s", owner_name, staffPerms, existingStaffPermsD)
                     fix = s.put(u_teams, json=staffPermsPayload)
                     if fix.status_code != 204:
-                        print(f"GHE API set staff perms status code {fix.status_code}")
+                        self.logger.error("GHE API set staff perms status code %s", fix.status_code)
                         return None
 
     def __repr__(self):
