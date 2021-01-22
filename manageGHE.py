@@ -1,4 +1,4 @@
-#!/usr/bin/env -S python3 -i
+#!/usr/bin/python3 -i
 
 import os
 import logging
@@ -275,9 +275,10 @@ class manageGHE:
                         return None
 
     def __repr__(self):
+        auth = self.github_headers['Authorization'] if 'Authorization' in self.github_headers else None
         retVal = f"""\
         API URL: {self.apiURL}
-  Authorization: {self.github_headers['Authorization']}
+  Authorization: {auth}
             Org: {self.org}"""
         return retVal
 
