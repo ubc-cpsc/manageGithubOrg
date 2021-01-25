@@ -104,7 +104,8 @@ class manageGHE:
             if template:
                 r = s.get(f"{self.apiURL}/repos/{template}", headers={'Accept': 'application/vnd.github.baptiste-preview+json'})
                 if r.status_code != 200:
-                    self.logger.error("template %s is not a repo. Status code = %s. Should be of the form 'owner/repo'", template, r.status_code)
+                    self.logger.error("template %s is not a repo. Status code = %s. Should be of the form 'owner/repo'",
+                                      template, r.status_code)
                     return
                 if not r.json()['is_template']:
                     self.logger.error("%s is not a 'template' repo.", template)
@@ -245,7 +246,8 @@ class manageGHE:
                 if r.status_code == 200:
                     for item in r.json():
                         if item['permissions'] != userPermsD:
-                            self.logger.info("Permissions: %s@%s set to %s. Was %s", item['login'], owner_name, userPerms, item['permissions'])
+                            self.logger.info("Permissions: %s@%s set to %s. Was %s",
+                                             item['login'], owner_name, userPerms, item['permissions'])
                             fix = s.put(f"{u_collab}/{item['login']}", json=userPermsPayload)
                             if fix.status_code != 204:
                                 self.logger.error("GHE API set user perms status code %s", fix.status_code)
