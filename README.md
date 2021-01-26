@@ -60,3 +60,10 @@ Subsequent runs of this command simply ignore repos that already exist (by name)
 Note the default permissions for both userPers and staffPerms is 'pull' (read only).
 
     m.setAssnPerms('assn1', userPerms='push')
+
+### Repo deletion
+A function is provided to delete repos. _Please use with caution._ Your token will need the `delete_repo` scope.
+This function should only be used in the course of testing the operation of the tool.
+It is recommended to remove the `delete_repo` token scope immediately after successful cleanup.
+
+    m.deleteAssnRepos('assn1')

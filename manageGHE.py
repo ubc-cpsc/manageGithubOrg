@@ -276,6 +276,52 @@ class manageGHE:
                         self.logger.error("GHE API set staff perms status code %s", fix.status_code)
                         return None
 
+    def deleteAssnRepos(self, assn):
+        """ Delete all repos that belong to {assn}.
+        This function is really only provided to clean up if a mistake was made on initial repo creation.
+        It should never be used as a matter of course...
+        REQUIRES personal access token with delete_repo scope."""
+
+        print(f"Are you sure you want to delete all repositories that start with '{assn}_' from org {self.org}?")
+        check = input("If you are sure, type 'I am sure.': ")
+        if (check != 'I am sure.'):
+            self.logger.info("Delete aborted.")
+            return
+
+        with self._getSession() as s:
+            # Lookup all current repos
+            myURL = f"{self.apiURL}/orgs/{self.org}/repos"
+            repos = {}
+            while True:
+                r = s.get(myURL)
+                if r.status_code == 200:
+                    for item in r.json():
+                        if item['name'].startswith(f"{assn}_"):
+                            repos[item['name']] = item['url']
+
+                    # https://docs.github.com/en/enterprise-server@2.21/rest/guides/traversing-with-pagination
+                    if 'Link' in r.headers:
+                        links = { x.split(';')[1].strip() : x.split(';')[0].strip(' <>') for x in r.headers['Link'].split(',') }
+                    else:
+                        links = {}
+                    if 'rel="next"' in links:
+                        myURL = links['rel="next"']
+                    else:
+                        break
+                else:
+                    self.logger.error("%s status_code %s", myURL, r.status_code)
+                    return None
+
+            for repo,repoURL in repos.items():
+                self.logger.info("deleting repo: %s", repo)
+                # https://docs.github.com/en/enterprise-server@2.21/rest/reference/repos#delete-a-repository
+                r = s.delete(repoURL)
+                if r.status_code == 204:
+                    self.logger.debug("deleted repo %s", repoURL)
+                else:
+                    self.logger.critical("%s status_code %s", repoURL, r.status_code)
+                    return None
+
     def __repr__(self):
         auth = self.github_headers['Authorization'] if 'Authorization' in self.github_headers else None
         retVal = f"""\
