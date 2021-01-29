@@ -15,12 +15,21 @@ class manageGHE:
     github_headers = { 'Accept': 'application/vnd.github.v3+json' }
     doUpdates = True
 
-    def __init__(self, logger=None, verbose=False):
+    def __init__(self, logger=None, logFile=None, verbose=False):
         if logger:
             self.logger = logger
         else:
             self.logger = logging.getLogger('manageGHE')
             self.logger.setLevel(logging.DEBUG)
+
+            # Prefix with context
+            formatter = logging.Formatter('[%(asctime)s] %(process)d %(levelname)s %(message)s', datefmt='%d/%b/%Y %H:%M:%S')
+
+            if logFile:
+                lf = logging.FileHandler(logFile)
+                lf.setLevel(logging.INFO)
+                lf.setFormatter(formatter)
+                self.logger.addHandler(lf)
 
             # dump to standard out
             from sys import stdout
@@ -28,8 +37,6 @@ class manageGHE:
             ch.setLevel(logging.INFO)
             if verbose:
                 ch.setLevel(logging.DEBUG)
-            # Prefix with context 
-            formatter = logging.Formatter('[%(asctime)s] %(process)d %(levelname)s %(message)s', datefmt='%d/%b/%Y %H:%M:%S')
             ch.setFormatter(formatter)
             self.logger.addHandler(ch)
 
