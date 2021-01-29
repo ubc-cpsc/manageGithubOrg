@@ -1,6 +1,7 @@
 #!/usr/bin/python3 -i
 
 import os, sys
+import re
 import logging
 import requests
 
@@ -185,7 +186,7 @@ class manageGHE:
 
 
 
-    def setAssnPerms(self, assn, userPerms=None, staffPerms=None, adminPerms=None):
+    def setAssnPerms(self, assn, assnRE=None, userPerms=None, staffPerms=None, adminPerms=None):
         """ Query perms for all assignment {assn} and update perms. """
 
         if not self.doUpdates:
@@ -226,6 +227,10 @@ class manageGHE:
                 "triage": False,
                 "pull": True,
             }
+        if assnRE is None:
+            assnRE = fr"^{assn}_\S+$"
+        self.logger.info("assignment regular expression used: %s", assnRE)
+        assnPattern = re.compile(assnRE)
 
         with self._getSession() as s:
             if staffPerms:
@@ -254,7 +259,7 @@ class manageGHE:
                 if r.status_code == 200:
                     for rCount, item in enumerate(r.json(), rCount+1):
                         if sys.stdout.isatty(): print(f"{rCount:04}", end=' - repo search              \r')
-                        if item['name'].startswith(f"{assn}_"):
+                        if assnPattern.match(item['name']):
                             repos[item['name']] = item
 
                     # https://docs.github.com/en/enterprise-server@2.21/rest/guides/traversing-with-pagination
@@ -270,7 +275,7 @@ class manageGHE:
                     self.logger.error("GHE API status code %s", r.status_code)
                     return None
             repoCount = len(repos)
-            self.logger.info("Found %s matching repositories", repoCount)
+            self.logger.info("Found %s matching repositories out of %s", repoCount, rCount)
 
             if userPerms:
                 # Do all the direct collaborators (students) first, and then the staff team.
@@ -369,6 +374,8 @@ class manageGHE:
                             if fix.status_code != 204:
                                 self.logger.error("GHE API set admin perms status code %s", fix.status_code)
                                 return None
+
+        self.logger.info("setAssnPerms complete")
 
     def deleteAssnRepos(self, assn):
         """ Delete all repos that belong to {assn}.
