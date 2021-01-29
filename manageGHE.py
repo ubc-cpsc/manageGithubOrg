@@ -37,6 +37,7 @@ class manageGHE:
         self._token = os.getenv('GHE_TOKEN', self._token)
         if self._token:
             self.github_headers['Authorization'] = 'token ' + self._token
+        self.doUpdates = False if os.getenv('GHE_DRYRUN') else True
 
     def _getSession(self):
         if not self._token:
