@@ -57,7 +57,8 @@ Subsequent runs of this command simply ignore repos that already exist (by name)
     m.createAssnRepos('assn1', students, template='CPSCNNN-YYYYS-TM/assn1Template')
 
 ### Permission setting
-Note the default permissions for both userPers and staffPerms is 'pull' (read only).
+Note the default permissions for userPerms/staffPerms/adminPerms is None, which means don't do anything.
+Only explicitly specified permissions will be updated.
 
     m.setAssnPerms('assn1', userPerms='push')
 
