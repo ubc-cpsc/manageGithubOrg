@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 
-import os
+import os, sys
 import logging
 import requests
 
@@ -248,10 +248,12 @@ class manageGHE:
             # Lookup all current repos
             myURL = f"{self.apiURL}/orgs/{self.org}/repos"
             repos = {}
+            rCount = 0
             while True:
                 r = s.get(myURL)
                 if r.status_code == 200:
-                    for item in r.json():
+                    for rCount, item in enumerate(r.json(), rCount+1):
+                        if sys.stdout.isatty(): print(f"{rCount:04}", end=' - repo search              \r')
                         if item['name'].startswith(f"{assn}_"):
                             repos[item['name']] = item
 
@@ -267,11 +269,14 @@ class manageGHE:
                 else:
                     self.logger.error("GHE API status code %s", r.status_code)
                     return None
+            repoCount = len(repos)
+            self.logger.info("Found %s matching repositories", repoCount)
 
             if userPerms:
                 # Do all the direct collaborators (students) first, and then the staff team.
                 self.logger.info("Inspecting direct collaborator permissions.")
-                for v in repos.values():
+                for rCount, v in enumerate(repos.values(), 1):
+                    if sys.stdout.isatty(): print(f"{rCount:04}/{repoCount}", end=' - direct collaborators              \r')
                     owner_name = v['full_name']
                     # Grab the list of direct collaborators
                     # https://docs.github.com/en/enterprise-server@2.21/rest/reference/repos#list-repository-collaborators
@@ -293,7 +298,8 @@ class manageGHE:
 
                 # Go through teams, update all (as user) except staff + admin.
                 self.logger.info("Inspecting user team permissions.")
-                for v in repos.values():
+                for rCount, v in enumerate(repos.values(), 1):
+                    if sys.stdout.isatty(): print(f"{rCount:04}/{repoCount}", end=' - user teams              \r')
                     owner_name = v['full_name']
                     # Grab the list of direct collaborators
                     # https://docs.github.com/en/enterprise-server@2.21/rest/reference/repos#list-repository-collaborators
@@ -318,7 +324,8 @@ class manageGHE:
 
             if staffPerms:
                 self.logger.info("Inspecting staff team permissions.")
-                for v in repos.values():
+                for rCount, v in enumerate(repos.values(), 1):
+                    if sys.stdout.isatty(): print(f"{rCount:04}/{repoCount}", end=' - staff team              \r')
                     owner_name = v['full_name']
                     # Look up the staff team permissions on the repo.
                     # https://docs.github.com/en/enterprise-server@2.21/rest/reference/teams#check-team-permissions-for-a-repository
@@ -341,7 +348,8 @@ class manageGHE:
 
             if adminPerms:
                 self.logger.info("Inspecting admin team permissions.")
-                for v in repos.values():
+                for rCount, v in enumerate(repos.values(), 1):
+                    if sys.stdout.isatty(): print(f"{rCount:04}/{repoCount}", end=' - admin team              \r')
                     owner_name = v['full_name']
                     # Look up the admin team permissions on the repo.
                     # https://docs.github.com/en/enterprise-server@2.21/rest/reference/teams#check-team-permissions-for-a-repository
