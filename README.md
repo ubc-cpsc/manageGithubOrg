@@ -68,3 +68,7 @@ This function should only be used in the course of testing the operation of the 
 It is recommended to remove the `delete_repo` token scope immediately after successful cleanup.
 
     m.deleteAssnRepos('assn1')
+
+## License
+
+Licensed under the [MIT license](LICENSE).
